@@ -124,10 +124,10 @@ class FilesRouter {
                     // 构建用户特定的文件路径
                     const userUploadDir = path.join(this._configService.get('uploadDir'), effectiveUserId);
                     const filePath = path.join(userUploadDir, result.savedAs);
-                    // 使用用户特定的URL
-                    const localUrl = `${this._configService.get('uploadDir')}/${effectiveUserId}/${result.savedAs}`;
+                    // 使用正确的外部URL
+                    const externalUrl = `${this._configService.get('externalBaseUrl')}/uploads/${effectiveUserId}/${result.savedAs}`;
                     console.log(`立即处理单张图片: ${result.savedAs}`);
-                    this._processSingleImage(filePath, localUrl, result.savedAs, user, modelConfig);
+                    this._processSingleImage(filePath, externalUrl, result.savedAs, user, modelConfig);
                 }
                 
                 checkComplete();
