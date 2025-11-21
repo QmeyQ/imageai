@@ -15,11 +15,6 @@ aiEditServer/
     images.js              # 任务创建/查询/结果列表
     admin.js               # 用户管理/配额/统计
     events.js              # SSE 推送任务与系统事件
-  controllers/
-    authController.js
-    filesController.js
-    imagesController.js
-    adminController.js
   services/
     imageAIService.js      # 封装 imageAI 流程与轮询
     dashscopeAdapter.js    # 统一通义模型/操作适配（可置于 adapters/）
@@ -30,12 +25,12 @@ aiEditServer/
     sseService.js          # 事件中心与订阅管理
     nonceService.js        # 防重放 Nonce/LRU 管理
   middlewares/
-    signatureAuth.js       # 验签(ES256)：X-UserId/X-Timestamp/X-Nonce/X-BodyDigest/X-Signature
-    ownership.js           # 资源归属检查：仅允许 <userId> 目录
-    rateLimit.js           # 简易速率限制与退避
-    jsonBody.js            # JSON 解析（保留现有增强版）
+    sign.js       # 验签(ES256)：X-UserId/X-Timestamp/X-Nonce/X-BodyDigest/X-Signature
+    own.js           # 资源归属检查：仅允许 <userId> 目录
+    rate.js           # 简易速率限制与退避
+    json.js            # JSON 解析（保留现有增强版）
     cors.js                # 跨域（保留）
-    errorHandler.js        # 统一错误响应结构
+    err.js        # 统一错误响应结构
   utils/
     file.js                # 已有：文件工具（保留）
     net.js                 # 已有：轻量 HTTP 服务器（保留）
@@ -49,6 +44,7 @@ aiEditServer/
     nonces.json            # 最近 Nonce（可选持久化；主要内存 LRU）
   config/
     index.js               # 环境变量/域名/端口/外部 URL 基础配置
+```
 client/
   net.js                   # 已有：统一请求层（扩展签名头注入）
   ui.js                    # 已有：视图工具（扩展结果状态、配额显示）
@@ -80,7 +76,7 @@ client/
 
 ## 安全与防暴力/重放
 
-- 非对称 ES256 验签：`X-UserId/X-Timestamp/X-Nonce/X-BodyDigest/X-Signature`；验签失败与过期拒绝。
+- 非对称 ES256 验签：`X-UserId/X-Timestamp/X-Nonce/X-BodyDigest/X-Signature`；验签失败拒绝。
 - Nonce 一次性：`nonceService` 维护 LRU + TTL（10–15 分钟）；命中即拒绝。
 - 时间窗口：±300 秒；过期拒绝。
 - 速率限制：按用户+路由；超限退避与告警。

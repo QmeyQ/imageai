@@ -188,7 +188,7 @@ class Net {
      * 删除文件
      */
     delete(filename, callback) {
-        const endpoint = this.FILES_ENDPOINT + '/' + encodeURIComponent(filename);
+        const endpoint = '/delete/' + encodeURIComponent(filename);
         this.send('DELETE', endpoint, null, null, callback);
     }
 
@@ -196,34 +196,13 @@ class Net {
      * 批量删除 - 并行执行，最高效
      */
     deleteMultiple(filenames, callback) {
-        let completed = 0;
-        const total = filenames.length;
-        const results = [];
-        
-        if (total === 0) {
+        if (!Array.isArray(filenames) || filenames.length === 0) {
             callback(null, []);
             return;
         }
-        
-        const checkCompletion = () => {
-            completed++;
-            if (completed === total) {
-                callback(null, results);
-            }
-        };
-        
-        for (let i = 0; i < total; i++) {
-            const filename = filenames[i];
-            this.delete(filename, (error, result) => {
-                results.push({
-                    filename: filename,
-                    success: !error,
-                    result: result,
-                    error: error ? error.message : null
-                });
-                checkCompletion();
-            });
-        }
+
+        const data = { filenames: filenames };
+        this.send('POST', '/delete', data, null, callback);
     }
 
     /**

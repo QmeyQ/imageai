@@ -76,6 +76,8 @@
  * - populateOperationSelector(operations): 填充操作选择器
  * - getSelectedModel(): 获取选中的模型
  * - getSelectedOperation(): 获取选中的操作
+ * - renderModelParams(model): 渲染模型参数配置
+ * - getModelParams(): 获取模型参数配置
  */
 /**
  * UI工具类 - ui.js
@@ -110,7 +112,9 @@ class UITools {
             deleteSelectedBtn: document.getElementById('deleteSelectedBtn'),
             showAllBtn: document.getElementById('showAllBtn'),
             modelSelector: document.getElementById('modelSelector'),
-            operationSelector: document.getElementById('operationSelector')
+            operationSelector: document.getElementById('operationSelector'),
+            modelParamsSection: document.getElementById('modelParamsSection'),
+            modelParamsGrid: document.getElementById('modelParamsGrid')
         };
         
         // 调试信息：检查所有元素是否正确获取
@@ -499,22 +503,51 @@ class UITools {
             }
         }
 
-        item.innerHTML = `
-            <div class="image-checkbox">
-                <input type="checkbox" class="image-select-checkbox" id="checkbox-${fileInfo.name.replace(/[^\w]/g, '-')}">
-            </div>
-            <div class="image-container">
-                <img src="${fileInfo.url}" alt="${fileInfo.name}" onerror="this.parentElement.innerHTML='<div class=\"image-placeholder error\"><div class=\"placeholder-icon\">❌</div><div class=\"placeholder-text\">图片加载失败</div></div>'" onload="(${onLoadCallback || 'function(){}'})()">
-            </div>
-            <div class="image-info">
-                <div class="image-name">${fileInfo.name}</div>
-                <div class="image-size">${this.formatFileSize(fileInfo.size)}</div>
-                ${resultInfo ? this.createStatusHtml(resultInfo) : ''}
-            </div>
-            <div class="image-actions">
-                <button class="action-btn delete-server-btn" title="删除此图片">🗑️ 删除</button>
-            </div>
+        // 创建图片容器
+        const imageContainer = document.createElement('div');
+        imageContainer.className = 'image-container';
+
+        // 创建图片元素
+        const img = document.createElement('img');
+        img.src = fileInfo.url;
+        img.alt = fileInfo.name;
+
+        // 设置图片加载错误处理
+        img.onerror = function() {
+            this.parentElement.innerHTML = '<div class="image-placeholder error"><div class="placeholder-icon">❌</div><div class="placeholder-text">图片加载失败</div></div>';
+        };
+
+        // 设置图片加载完成处理
+        if (onLoadCallback && typeof onLoadCallback === 'function') {
+            img.onload = function() {
+                onLoadCallback();
+            };
+        }
+
+        imageContainer.appendChild(img);
+
+        // 构建其他元素
+        const checkboxDiv = document.createElement('div');
+        checkboxDiv.className = 'image-checkbox';
+        checkboxDiv.innerHTML = `<input type="checkbox" class="image-select-checkbox" id="checkbox-${fileInfo.name.replace(/[^\w]/g, '-')}">`;
+
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'image-info';
+        infoDiv.innerHTML = `
+            <div class="image-name">${fileInfo.name}</div>
+            <div class="image-size">${this.formatFileSize(fileInfo.size)}</div>
+            ${resultInfo ? this.createStatusHtml(resultInfo) : ''}
         `;
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'image-actions';
+        actionsDiv.innerHTML = '<button class="action-btn delete-server-btn" title="删除此图片">🗑️ 删除</button>';
+
+        // 组装所有元素
+        item.appendChild(checkboxDiv);
+        item.appendChild(imageContainer);
+        item.appendChild(infoDiv);
+        item.appendChild(actionsDiv);
 
         serverImages.appendChild(item);
         return item;
@@ -636,8 +669,8 @@ class UITools {
             });
         }
 
-        // 如果只有一个模型，自动选择它
-        if (models && models.length === 1) {
+        // 如果有模型，自动选择第一个
+        if (models && models.length > 0) {
             modelSelector.value = models[0].id || models[0].name;
         }
     }
@@ -668,8 +701,8 @@ class UITools {
             });
         }
 
-        // 如果只有一个操作，自动选择它
-        if (operations && operations.length === 1) {
+        // 如果有操作，自动选择第一个
+        if (operations && operations.length > 0) {
             operationSelector.value = operations[0];
         }
     }
@@ -689,4 +722,182 @@ class UITools {
         const { operationSelector } = this.elements;
         return operationSelector ? operationSelector.value : null;
     }
+    
+    /**
+     * 渲染模型参数配置
+     */
+    renderModelParams(model) {
+        const { modelParamsSection, modelParamsGrid } = this.elements;
+        
+        // 清空现有参数
+        if (modelParamsGrid) {
+            modelParamsGrid.innerHTML = '';
+        }
+        
+        // 如果没有模型或模型没有参数Schema，则隐藏参数配置区域
+        if (!model || !model.paramsSchema) {
+            if (modelParamsSection) {
+                modelParamsSection.style.display = 'none';
+            }
+            return;
+        }
+        
+        // 显示参数配置区域
+        if (modelParamsSection) {
+            modelParamsSection.style.display = 'block';
+        }
+        
+        // 根据参数Schema生成参数配置项，但排除prompt参数
+        Object.keys(model.paramsSchema).forEach(paramName => {
+            // 跳过prompt参数，因为它已经在下拉输入框中了
+            if (paramName === 'prompt') return;
+            
+            const paramConfig = model.paramsSchema[paramName];
+            this._createParamItem(paramName, paramConfig, modelParamsGrid);
+        });
+    }
+    
+    /**
+     * 创建参数配置项
+     */
+    _createParamItem(paramName, paramConfig, container) {
+        if (!container) return;
+        
+        const paramItem = document.createElement('div');
+        paramItem.className = 'param-item';
+        
+        const label = document.createElement('label');
+        label.textContent = paramName;
+        label.setAttribute('for', `param-${paramName}`);
+        
+        let input;
+        
+        // 根据参数类型创建不同的输入控件
+        if (paramConfig.enum) {
+            // 枚举类型，创建下拉框
+            input = document.createElement('select');
+            input.id = `param-${paramName}`;
+            input.name = paramName;
+            
+            // 添加默认选项
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = '请选择';
+            input.appendChild(defaultOption);
+            
+            // 添加枚举选项
+            paramConfig.enum.forEach((option, index) => {
+                const optionElement = document.createElement('option');
+                optionElement.value = option;
+                optionElement.textContent = option;
+                input.appendChild(optionElement);
+                
+                // 如果是第一个选项，设置为选中状态
+                if (index === 0) {
+                    optionElement.selected = true;
+                }
+            });
+        } else if (paramConfig.type === 'number') {
+            // 数字类型，创建数字输入框
+            input = document.createElement('input');
+            input.type = 'number';
+            input.id = `param-${paramName}`;
+            input.name = paramName;
+            
+            // 设置数字范围
+            if (paramConfig.min !== undefined) {
+                input.min = paramConfig.min;
+            }
+            if (paramConfig.max !== undefined) {
+                input.max = paramConfig.max;
+            }
+            // 设置默认值
+            if (paramConfig.default !== undefined) {
+                input.value = paramConfig.default;
+            }
+        } else {
+            // 字符串类型，创建文本输入框
+            input = document.createElement('input');
+            input.type = 'text';
+            input.id = `param-${paramName}`;
+            input.name = paramName;
+            
+            // 设置默认值
+            if (paramConfig.default !== undefined) {
+                input.value = paramConfig.default;
+            }
+        }
+        
+        paramItem.appendChild(label);
+        paramItem.appendChild(input);
+        container.appendChild(paramItem);
+    }
+    
+    /**
+     * 获取模型参数配置
+     */
+    getModelParams() {
+        const { modelParamsGrid } = this.elements;
+        if (!modelParamsGrid) return {};
+        
+        const params = {};
+        const inputs = modelParamsGrid.querySelectorAll('input, select');
+        
+        inputs.forEach(input => {
+            const name = input.name;
+            let value = input.value;
+            
+            // 跳过空值（但保留数字0）
+            if (value === '' && input.type !== 'number') return;
+            
+            // 根据输入类型转换值
+            if (input.type === 'number') {
+                // 如果值为空字符串，设置为0或跳过
+                if (value === '') {
+                    // 检查是否有默认值配置
+                    const paramConfig = this._getCurrentParamConfig(name);
+                    if (paramConfig && paramConfig.default !== undefined) {
+                        value = paramConfig.default;
+                    } else {
+                        value = 0; // 默认为0
+                    }
+                } else {
+                    value = parseFloat(value);
+                }
+            }
+            
+            params[name] = value;
+        });
+        
+        return params;
+    }
+    
+    /**
+     * 获取当前参数的配置信息
+     */
+    _getCurrentParamConfig(paramName) {
+        // 从缓存中获取当前选中模型的参数配置
+        const modelListCache = localStorage.getItem('modelListCache');
+        if (!modelListCache) return null;
+        
+        try {
+            const cacheData = JSON.parse(modelListCache);
+            const selectedModelId = this.getSelectedModel();
+            
+            if (cacheData.data && selectedModelId) {
+                const selectedModel = cacheData.data.find(model => 
+                    model.id === selectedModelId || model.name === selectedModelId
+                );
+                
+                if (selectedModel && selectedModel.paramsSchema && selectedModel.paramsSchema[paramName]) {
+                    return selectedModel.paramsSchema[paramName];
+                }
+            }
+        } catch (e) {
+            console.warn('解析模型缓存数据失败:', e);
+        }
+        
+        return null;
+    }
+
 }

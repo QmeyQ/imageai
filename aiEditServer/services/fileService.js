@@ -61,7 +61,10 @@ class FileService {
      * @returns {boolean} 是否安全
      */
     isSafePath(filePath) {
-        return filePath.startsWith(this.options.uploadDir);
+        // 检查路径是否在上传目录或其子目录中
+        const normalizedUploadDir = path.resolve(this.options.uploadDir);
+        const normalizedFilePath = path.resolve(filePath);
+        return normalizedFilePath.startsWith(normalizedUploadDir);
     }
 
     /**

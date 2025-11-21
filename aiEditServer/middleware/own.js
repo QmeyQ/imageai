@@ -88,6 +88,11 @@ class OwnershipMiddleware {
             return true;
         }
         
+        // 允许访问模型相关路由（公开访问）
+        if (req.path.startsWith('/img/models')) {
+            return true;
+        }
+        
         // 对于文件列表请求，允许用户访问自己的文件
         if (req.path === '/files' && req.method === 'GET') {
             return true;

@@ -377,10 +377,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     console.log('✅ 使用缓存的模型列表');
                     uiTools.populateModelSelector(cachedData.data);
                     
-                    // 如果有默认模型，自动加载其操作列表
+                    // 如果有默认模型，自动加载其操作列表和参数配置
                     const defaultModel = cachedData.data[0];
                     if (defaultModel) {
                         loadModelOperations(defaultModel.id || defaultModel.name);
+                        // 渲染模型参数配置
+                        uiTools.renderModelParams(defaultModel);
+                        // 保存缓存数据到localStorage供其他函数使用
+                        localStorage.setItem('modelListCache', JSON.stringify(cachedData));
                     }
                     return;
                 } else {
@@ -402,10 +406,14 @@ document.addEventListener('DOMContentLoaded', function () {
                         console.log('🔄 使用过期缓存数据');
                         uiTools.populateModelSelector(cachedData.data);
                         
-                        // 如果有默认模型，自动加载其操作列表
+                        // 如果有默认模型，自动加载其操作列表和参数配置
                         const defaultModel = cachedData.data[0];
                         if (defaultModel) {
                             loadModelOperations(defaultModel.id || defaultModel.name);
+                            // 渲染模型参数配置
+                            uiTools.renderModelParams(defaultModel);
+                            // 保存缓存数据到localStorage供其他函数使用
+                            localStorage.setItem('modelListCache', JSON.stringify(cachedData));
                         }
                     }
                     return;
@@ -431,10 +439,14 @@ document.addEventListener('DOMContentLoaded', function () {
                         }
                     });
                     
-                    // 如果有默认模型，自动加载其操作列表
+                    // 如果有默认模型，自动加载其操作列表和参数配置
                     const defaultModel = response.data[0];
                     if (defaultModel) {
                         loadModelOperations(defaultModel.id || defaultModel.name);
+                        // 渲染模型参数配置
+                        uiTools.renderModelParams(defaultModel);
+                        // 保存缓存数据到localStorage供其他函数使用
+                        localStorage.setItem('modelListCache', JSON.stringify(cacheData));
                     }
                 } else {
                     uiTools.elements.modelSelector.innerHTML = '<option value="">无可用模型</option>';
@@ -451,6 +463,23 @@ document.addEventListener('DOMContentLoaded', function () {
         
         // 清空操作选择器
         uiTools.elements.operationSelector.innerHTML = '<option value="">加载中...</option>';
+        
+        // 获取模型详细信息
+        storage.get('modelListCache', (cachedData) => {
+            let selectedModel = null;
+            if (cachedData && cachedData.data) {
+                selectedModel = cachedData.data.find(model => 
+                    model.id === modelId || model.name === modelId
+                );
+            }
+            
+            // 渲染模型参数配置
+            uiTools.renderModelParams(selectedModel);
+            // 保存缓存数据到localStorage供其他函数使用
+            if (cachedData) {
+                localStorage.setItem('modelListCache', JSON.stringify(cachedData));
+            }
+        });
         
         // 加载模型支持的操作
         loadModelOperations(modelId);
@@ -564,11 +593,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
         uiTools.showProgress(20, '正在保存配置...');
         
+        // 获取模型参数配置
+        const parameters = uiTools.getModelParams();
+        
         // 保存配置到服务器
         const config = { 
             prompt,
             model,
-            operation
+            operation,
+            parameters
         };
         
         window.Net.post('/config', config, (promptError, result) => {
@@ -582,7 +615,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 prompt: prompt,
                 model: model,
                 operation: operation,
-                parameters: { "n": 1 } // 默认参数
+                parameters: parameters
             };
             
             storage.getKeys((allKeys) => {
@@ -1684,6 +1717,10 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 });
+
+
+
+
 
 
 

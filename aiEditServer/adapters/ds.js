@@ -40,14 +40,21 @@ class DashScopeAdapter {
      * @param {Function} callback - 回调函数
      */
     invoke(model, op, input, cfg, callback) {
+        // 直接使用客户端提交的完整参数，无需转换
+        const parameters = cfg.parameters || {};
+        
+        // 确保model参数是字符串类型
+        const modelStr = typeof model === 'object' && model !== null ? model.id || model.name || JSON.stringify(model) : model;
+        
         const payload = {
-            model: model,
+            model: modelStr,
             input: {
                 "function": op,
                 ...input
             },
-            parameters: cfg.parameters || {"n": 1}
+            parameters: parameters
         };
+        console.log(`[DEBUG] 请求体:`, JSON.stringify(payload, null, 2));
 
         axios.post(this.apiUrl, payload, {
             headers: {
@@ -58,10 +65,24 @@ class DashScopeAdapter {
             }
         })
         .then(response => {
+            console.log(`[DEBUG] API调用成功，状态码: ${response.status}`);
+            console.log(`[DEBUG] 响应数据:`, JSON.stringify(response.data, null, 2));
+            console.log('响应体：', JSON.stringify(response.headers));
             callback(null, response.data);
         })
-        .catch(callback);
+        .catch(error => {
+            console.error(`[ERROR] API调用失败:`, error.message);
+            if (error.response) {
+                console.error(`[ERROR] 响应状态: ${error.response.status}`);
+                console.error(`[ERROR] 响应数据:`, JSON.stringify(error.response.data, null, 2));
+            }
+            callback(error);
+        });
+
+        console.log('负载：', JSON.stringify(payload));
     }
+
+
 
     /**
      * 查任务
@@ -139,7 +160,8 @@ class DashScopeAdapter {
             'wanx2.1-imageedit': ['description_edit', 'object_replace', 'background_change', 'style_transfer'],
             'wanx-v1': ['text_to_image', 'image_variation'],
             'qwen-vl-plus': ['description_edit', 'object_replace', 'background_change'],
-            'qwen-vl-max': ['description_edit', 'object_replace', 'background_change', 'style_transfer', 'image_inpainting']
+            'qwen-vl-max': ['description_edit', 'object_replace', 'background_change', 'style_transfer', 'image_inpainting'],
+            'stable-diffusion-3.5': ['text_to_image', 'image_to_image', 'image_inpainting', 'image_outpainting', 'controlnet']
         };
 
         const modelOps = operations[model] || [];

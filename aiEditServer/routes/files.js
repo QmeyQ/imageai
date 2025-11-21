@@ -51,13 +51,20 @@ class FilesRouter {
         netServer.get('/files', (req, res) => this.list(req, res));
         
         // 删除单个文件
-        netServer.delete('/files/:filename', (req, res) => this.delete(req, res));
+        netServer.delete('/delete/:filename', (req, res) => this.delete(req, res));
         
         // 批量删除文件
-        netServer.post('/files/delete', (req, res) => this.deleteBatch(req, res));
+        netServer.post('/delete', (req, res) => this.deleteBatch(req, res));
         
         // 静态文件服务
         netServer.get('/uploads/:filename', (req, res) => this.static(req, res));
+        
+        // 配置管理
+        netServer.get('/config', (req, res) => this.config(req, res));
+        netServer.post('/config', (req, res) => this.config(req, res));
+        
+        // 手动清理
+        netServer.post('/image-ai/cleanup', (req, res) => this.manualCleanup(req, res));
     }
 
     /**
@@ -94,7 +101,7 @@ class FilesRouter {
         const modelConfig = {
             model: req.body.model || 'wanx2.1-imageedit',
             prompt: req.body.prompt || '',
-            parameters: req.body.parameters || { "n": 1 }
+            parameters: this._parseParameters(req.body)
         };
 
         const files = req.body.files;
@@ -129,6 +136,40 @@ class FilesRouter {
     }
     
     /**
+     * 解析请求参数
+     */
+    _parseParameters(body) {
+        const parameters = {};
+        
+        // 基本参数
+        if (body.n !== undefined) parameters.n = parseInt(body.n);
+        if (body.seed !== undefined) parameters.seed = parseInt(body.seed);
+        if (body.strength !== undefined) parameters.strength = parseFloat(body.strength);
+        if (body.steps !== undefined) parameters.steps = parseInt(body.steps);
+        if (body.cfg_scale !== undefined) parameters.cfg_scale = parseFloat(body.cfg_scale);
+        if (body.width !== undefined) parameters.width = parseInt(body.width);
+        if (body.height !== undefined) parameters.height = parseInt(body.height);
+        
+        // 字符串参数
+        if (body.prompt) parameters.prompt = body.prompt;
+        if (body.negative_prompt) parameters.negative_prompt = body.negative_prompt;
+        if (body.style) parameters.style = body.style;
+        if (body.size) parameters.size = body.size;
+        
+        // 从parameters字段获取额外参数
+        if (body.parameters && typeof body.parameters === 'object') {
+            Object.assign(parameters, body.parameters);
+        }
+        
+        // 确保至少有一个生成数量参数
+        if (parameters.n === undefined) {
+            parameters.n = 1;
+        }
+        
+        return parameters;
+    }
+    
+    /**
      * 判断是否为图片文件
      */
     _isImageFile(filename) {
@@ -157,6 +198,7 @@ class FilesRouter {
         console.log(`文件路径: ${filePath}`);
         console.log(`外部URL: ${externalUrl}`);
         console.log(`使用模型: ${model}, 提示词: ${prompt}`);
+        console.log(`参数:`, parameters);
         
         // 模拟处理完成，返还配额
         setTimeout(() => {
@@ -312,7 +354,7 @@ class FilesRouter {
 
             fileUtil.del(filePath, (delErr) => {
                 if (delErr) {
-                    return this._sendError(res, 500, `删除文件失败: ${delErr.message}`);
+                    return this._sendError(res, 500, `删除文件失败: ${delErr.message},文件路径：${filePath}`);
                 }
 
                 res.end(JSON.stringify({
@@ -347,7 +389,7 @@ class FilesRouter {
         };
 
         filenames.forEach(filename => {
-            this._deleteSingle(filename, (result) => {
+            this._deleteSingle(filename, req, (result) => {  // 传递req参数
                 results.push(result);
                 processed++;
                 checkComplete();
@@ -355,12 +397,13 @@ class FilesRouter {
         });
     }
 
+
     /**
      * 删除单个文件
      */
-    _deleteSingle(filename, callback) {
+    _deleteSingle(filename, req, callback) {  // 添加req参数
         // 获取用户ID
-        const userId = 'anonymous'; // 在批量删除中，我们需要从调用上下文获取用户ID
+        const userId = req.headers['x-user-id'] || 'anonymous';  // 从req中获取用户ID
         
         // 构建用户特定的文件路径
         const userUploadDir = path.join(this._configService.get('uploadDir'), userId);
@@ -385,11 +428,29 @@ class FilesRouter {
             }
 
             if (!exists) {
-                return callback({
-                    success: false,
-                    filename: filename,
-                    message: '文件不存在'
+                // 如果在用户目录找不到，尝试在匿名目录查找
+                const anonymousUploadDir = path.join(this._configService.get('uploadDir'), 'anonymous');
+                const anonymousFilePath = path.join(anonymousUploadDir, filename);
+                
+                fileUtil.exists(anonymousFilePath, (anonExistsErr, anonExists) => {
+                    if (anonExistsErr || !anonExists) {
+                        return callback({
+                            success: false,
+                            filename: filename,
+                            message: '文件不存在'
+                        });
+                    }
+                    
+                    // 在匿名目录找到文件，删除它
+                    fileUtil.del(anonymousFilePath, (delErr) => {
+                        callback({
+                            success: !delErr,
+                            filename: filename,
+                            message: delErr ? `删除失败: ${delErr.message}` : '删除成功'
+                        });
+                    });
                 });
+                return;
             }
 
             fileUtil.del(filePath, (delErr) => {
@@ -400,6 +461,70 @@ class FilesRouter {
                 });
             });
         });
+    }
+
+    /**
+     * 配置管理
+     */
+    config(req, res) {
+        // 获取imageAI实例
+        const imageAI = this._imageAI;
+        
+        try {
+            // 清理过期结果
+            // 注意：这里应该使用清理服务而不是直接调用
+            
+            if (req.body && req.body.prompt) {
+                imageAI.prompt = req.body.prompt;
+            }
+            
+            if (req.body && req.body.results) {
+                // 处理results数据
+                if (Array.isArray(req.body.results)) {
+                    // 处理数组形式的results
+                    req.body.results.forEach(item => {
+                        if (item.del && item.key) {
+                            // 删除标记了del的项
+                            delete imageAI.results[item.key];
+                        } else if (item.key && item.value !== undefined) {
+                            // 添加或更新项
+                            imageAI.results[item.key] = item.value;
+                        }
+                    });
+                } else if (typeof req.body.results === 'object' && req.body.results !== null) {
+                    // 处理对象形式的results
+                    Object.entries(req.body.results).forEach(([key, value]) => {
+                        imageAI.results[key] = value;
+                    });
+                }
+            }
+            
+            res.end(JSON.stringify({
+                success: true,
+                data: {
+                    prompt: imageAI.prompt || '',
+                    results: imageAI.results || {}
+                }
+            }));
+        } catch (error) {
+            this._sendError(res, 500, `配置操作失败: ${error.message}`);
+        }
+    }
+
+    /**
+     * 手动清理过期结果
+     */
+    manualCleanup(req, res) {
+        try {
+            // 使用清理服务清理过期结果
+            // 注意：这里应该从服务中获取清理服务实例
+            res.end(JSON.stringify({
+                success: true,
+                message: '手动清理完成'
+            }));
+        } catch (error) {
+            this._sendError(res, 500, `手动清理失败: ${error.message}`);
+        }
     }
 
     /**

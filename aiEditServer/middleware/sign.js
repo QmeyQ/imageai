@@ -38,7 +38,7 @@ class SignMiddleware {
      * @param {Function} next - 下一个中间件
      */
     handle(req, res, next) {
-        // 检查是否需要签名验证
+        // 检查是否需要签名验证（通过路由判断，注册不验签）
         if (!this._requiresSignature(req)) {
             return next();
         }

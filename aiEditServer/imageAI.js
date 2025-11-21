@@ -97,77 +97,6 @@ class ImageAI {
     }
 
     /**
-     * 获取上传凭证
-     * @param {string} model - 模型名称
-     * @param {Function} callback - 回调函数 (error, policyData)
-     */
-    _getPolicy(model, callback) {
-        axios.get(this.uploadUrl, {
-            headers: {
-                'Authorization': `Bearer ${this.apiKey}`,
-                'Content-Type': 'application/json'
-            },
-            params: {
-                'action': 'getPolicy',
-                'model': model
-            }
-        })
-        .then(response => {
-            if (response.status === 200 && response.data?.data) {
-                callback(null, response.data.data);
-            } else {
-                callback(new Error(`获取上传凭证失败: ${response.status}`));
-            }
-        })
-        .catch(callback);
-    }
-
-    /**
-     * 上传文件到OSS
-     * @param {Object} policyData - 上传凭证数据
-     * @param {string} filePath - 本地文件路径
-     * @param {Function} callback - 回调函数 (error, fileUrl)
-     */
-    _upload(policyData, filePath, callback) {
-        if (!policyData?.upload_host || !policyData.upload_dir) {
-            callback(new Error('上传凭证数据无效'));
-            return;
-        }
-        
-        const fileName = path.basename(filePath);
-        const key = `${policyData.upload_dir}/${fileName}`;
-        const form = new FormData();
-        
-        form.append('OSSAccessKeyId', policyData.oss_access_key_id);
-        form.append('Signature', policyData.signature);
-        form.append('policy', policyData.policy);
-        form.append('x-oss-object-acl', policyData.x_oss_object_acl || 'private');
-        form.append('key', key);
-        form.append('success_action_status', 200);
-        
-        // 使用文件工具类读取文件流
-        file.read(filePath, { encoding: null }, (readError, fileData) => {
-            if (readError) return callback(readError);
-            
-            form.append('file', fileData);
-            
-            axios.post(policyData.upload_host, form, {
-                headers: form.getHeaders(),
-                maxContentLength: Infinity,
-                maxBodyLength: Infinity
-            })
-            .then(response => {
-                if (response.status === 200) {
-                    callback(null, policyData.file_url);
-                } else {
-                    callback(new Error(`文件上传失败: ${response.status}`));
-                }
-            })
-            .catch(callback);
-        });
-    }
-
-    /**
      * 上传图片到/upload路由
      * @param {string} filePath - 本地图片文件路径
      * @param {Function} callback - 回调函数 (error, imageUrl)
@@ -189,6 +118,8 @@ class ImageAI {
     task(params, callback) {
         if (!params) return callback(new Error('参数不能为空'));
         
+        console.log('[DEBUG] params:', JSON.stringify(params));
+
         // 验证参数
         const validation = this._taskService.validateTaskParams(params);
         if (!validation.valid) {
@@ -217,6 +148,9 @@ class ImageAI {
         const model = params.model || this.modelName;
         const operation = params.operation || 'description_edit';
         
+        console.log(`[DEBUG] 提交任务到DashScope - 模型: ${model}, 操作: ${operation}`);
+        console.log(`[DEBUG] 任务参数:`, JSON.stringify(params, null, 2));
+        
         // 使用DashScope适配器提交任务
         this._dsAdapter.invoke(
             model,
@@ -226,10 +160,15 @@ class ImageAI {
                 "base_image_url": params.imageUrl
             },
             {
-                parameters: params.parameters || {"n": 1}
+                parameters: params.parameters || {}
             },
             (error, result) => {
-                if (error) return callback(error);
+                if (error) {
+                    console.error(`[ERROR] 提交任务失败:`);
+                    return callback(error);
+                }
+                
+                console.log(`[DEBUG] 任务提交成功，响应:`, JSON.stringify(result, null, 2));
                 
                 const taskId = result.output?.task_id;
                 callback(null, {
@@ -239,7 +178,13 @@ class ImageAI {
                 });
                 
                 if (taskId) {
+                    console.log(`[DEBUG] 开始轮询任务状态，任务ID: ${taskId}`);
                     this._dsAdapter.poll(taskId, 30, 1000, (pollError, taskResult) => {
+                        if (pollError) {
+                            console.error(`[ERROR] 轮询任务状态失败，任务ID: ${taskId}`, pollError);
+                        } else {
+                            console.log(`[DEBUG] 任务轮询完成，任务ID: ${taskId}`, JSON.stringify(taskResult, null, 2));
+                        }
                         // 更新结果
                         if (this.endCb) this.endCb(taskId, taskResult?.output?.task_status, taskResult);
                     });
@@ -295,18 +240,30 @@ class ImageAI {
  * @param {Function} callback - 回调函数 (error, result)
  */
 _processSingleFile(filePath, editParams, callback) {
-    console.log(`处理图片: ${filePath}`);
+    console.log(`[DEBUG] 开始处理图片: ${filePath}`);
+    console.log(`[DEBUG] 编辑参数:`, JSON.stringify(editParams, null, 2));
     
     if (filePath.startsWith('http')) {
         // 远程URL，直接提交任务
         this.task({...editParams, imageUrl: filePath}, (error, result) => {
-            if (error) return callback(error);
+            if (error) {
+                console.error(`[ERROR] 提交任务失败: ${filePath}`);
+                return callback(error);
+            }
             
             const taskId = result.taskId;
-            if (!taskId) return callback(new Error('未获取到任务ID'));
+            if (!taskId) {
+                const errorMsg = '未获取到任务ID';
+                console.error(`[ERROR] ${errorMsg}: ${filePath}`);
+                return callback(new Error(errorMsg));
+            }
             
+            console.log(`[DEBUG] 任务提交成功，开始轮询，任务ID: ${taskId}`);
             this._poll(taskId, 30, 1000, (pollError, taskResult) => {
-                if (pollError) return callback(pollError);
+                if (pollError) {
+                    console.error(`[ERROR] 轮询任务失败: ${filePath}`, pollError);
+                    return callback(pollError);
+                }
                 
                 const status = taskResult?.output?.task_status;
                 const imageUrl = taskResult?.output?.results?.[0]?.url;
@@ -322,7 +279,7 @@ _processSingleFile(filePath, editParams, callback) {
                     timestamp: new Date().toISOString(),
                     data: taskResult
                 };
-                console.log(`处理完成: ${filePath} - ${status}`);
+                console.log(`[DEBUG] 处理完成: ${filePath} - ${status}`);
                 
                 callback(null, this.results[filePath]);
             });
@@ -337,10 +294,23 @@ _processSingleFile(filePath, editParams, callback) {
      * @param {Function} callback - 回调函数 (error, results)
      */
     process(input, editParams, callback) {
-        if (!input) return callback(new Error('输入不能为空'));
+        console.log(`选择模型：${this.modelName}`);
+        console.log(`[DEBUG] ImageAI.process 开始处理输入:`, JSON.stringify(input));
+        console.log(`[DEBUG] 编辑参数:`, JSON.stringify(editParams, null, 2));
+        
+        if (!input) {
+            const error = new Error('输入不能为空');
+            console.error(`[ERROR] ImageAI.process 输入为空:`, error.message);
+            return callback(error);
+        }
         
         this._getAllFiles(input, (filesError, fileList) => {
-            if (filesError) return callback(filesError);
+            if (filesError) {
+                console.error(`[ERROR] ImageAI.process 获取文件列表失败:`, filesError.message);
+                return callback(filesError);
+            }
+            
+            console.log(`[DEBUG] ImageAI.process 获取到文件列表:`, JSON.stringify(fileList, null, 2));
             this._processFileList(fileList, editParams, callback);
         });
     }
@@ -479,7 +449,10 @@ _getAllFiles(input, callback) {
      * @param {Function} callback - 回调函数 (error, results)
      */
     _processFileList(fileList, editParams, callback) {
+        console.log(`[DEBUG] ImageAI._processFileList 开始处理文件列表，文件数量: ${fileList.length}`);
+        
         if (fileList.length === 0) {
+            console.log(`[DEBUG] ImageAI._processFileList 文件列表为空，直接返回空结果`);
             return callback(null, {});
         }
         
@@ -488,17 +461,20 @@ _getAllFiles(input, callback) {
         
         const checkComplete = () => {
             if (processed === fileList.length) {
+                console.log(`[DEBUG] ImageAI._processFileList 所有文件处理完成，返回结果`);
                 callback(null, results);
             }
         };
         
         fileList.forEach(filePath => {
+            console.log(`[DEBUG] ImageAI._processFileList 处理文件: ${filePath}`);
             this._processSingleFile(filePath, editParams, (error, result) => {
                 processed++;
                 if (error) {
-                    console.error(`处理文件失败 ${filePath}:`, error.message);
+                    console.error(`[ERROR] ImageAI._processFileList 处理文件失败 ${filePath}:`, error.message);
                     results[filePath] = { error: error.message };
                 } else {
+                    console.log(`[DEBUG] ImageAI._processFileList 文件处理成功 ${filePath}`);
                     results[filePath] = result;
                     // 合并到实例的results中
                     Object.assign(this.results, results);

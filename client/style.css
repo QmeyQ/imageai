@@ -133,6 +133,64 @@
     position: relative;
 }
 
+/* 模型参数配置区域样式 */
+.model-params-section {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    border: 1px solid #e8e8e8;
+}
+
+.model-params-section h3 {
+    margin-bottom: 15px;
+    color: #1890ff;
+    font-size: 16px;
+}
+
+.params-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.param-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.param-item label {
+    font-size: 12px;
+    margin-bottom: 5px;
+    color: #666;
+}
+
+.param-item input,
+.param-item select {
+    padding: 6px 10px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    font-size: 13px;
+    transition: border-color 0.3s;
+}
+
+.param-item input:focus,
+.param-item select:focus {
+    outline: none;
+    border-color: #1890ff;
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.param-item input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+.param-item input[type="number"]::-webkit-outer-spin-button,
+.param-item input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
 * {
     margin: 0;
     padding: 0;

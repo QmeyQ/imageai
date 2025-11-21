@@ -93,8 +93,11 @@ class BusinessServer {
      * @param {Object} options - 配置选项
      */
     constructor(options = {}) {
-        // 初始化配置服务
-        this._configService = new ConfigService({
+        // 设置环境变量
+        process.env.IMAGEAI_API_KEY = 'sk-4606777';
+        
+        // 初始化配置选项
+        this.options = {
             port: 3000,
             host: '0.0.0.0',
             uploadDir: './360house-master/uploads',
@@ -103,31 +106,46 @@ class BusinessServer {
             externalBaseUrl: 'http://normalgame.cn',
             resultExpiryDays: 3, // 结果过期天数
             ...options
-        });
-        
-        // 从环境变量加载配置
-        this._configService.loadFromEnv();
-        
-        // 验证配置
-        const validation = this._configService.validate();
-        if (!validation.valid) {
-            console.error('配置验证失败:', validation.errors);
-            throw new Error('Invalid configuration: ' + validation.errors.join(', '));
-        }
-        
-        // 获取配置
-        this.options = this._configService.getAll();
+        };
 
+        // 初始化网络服务器
         this._netServer = new NetServer({
             port: this.options.port,
             host: this.options.host
         });
 
-        // 初始化ImageAI实例，使用环境变量或默认值
-        this._imageAI = new ImageAI(process.env.IMAGEAI_API_KEY || '');
+        // 初始化服务
+        this.init();
+
+        this._setupMiddlewares();
+        this._registerRoutes();
+        this._ensureUploadDir();
+    }
+
+    /**
+     * 初始化服务
+     */
+    init() {
+        // 初始化配置服务
+        this._configService = new ConfigService();
+        
+        // 初始化文件服务
+        this._fileService = new FileService(this._configService);
+        
+        // 初始化配额服务
+        this._quotaService = new QuotaService();
+        
+        // 初始化任务服务
+        this._taskService = new TaskService();
+        
+        // 初始化用户服务
+        this._userService = new UserService();
+        
+        // 初始化AI服务
+        this._imageAI = new ImageAI(process.env.IMAGEAI_API_KEY, this._taskService);
         
         // 初始化DashScope适配器
-        this._dsAdapter = new DashScopeAdapter(process.env.IMAGEAI_API_KEY || '');
+        this._dsAdapter = new DashScopeAdapter(process.env.IMAGEAI_API_KEY);
         
         // 初始化清理服务
         this._cleanupService = new CleanupService({
@@ -136,22 +154,17 @@ class BusinessServer {
             unprocessedImageExpiryHours: 1 // 未处理图片1小时后清理
         });
         
-        // 初始化文件服务
-        this._fileService = new FileService({
-            uploadDir: this.options.uploadDir,
-            externalBaseUrl: this.options.externalBaseUrl
-        });
+        // 初始化模型服务
+        this._modelService = new ModelService();
         
-        // 初始化配置存储
-        this._imageAIPrompt = '';
-        // 不再使用独立的_imageAIResults对象，直接使用this._imageAI.results
-
+        // 初始化认证服务
+        this._authService = new AuthService();
+        
+        // 初始化事件服务
+        this._eventsService = new EventsService();
+        
         // 启动定时清理任务
         this._startCleanupTask();
-
-        this._setupMiddlewares();
-        this._registerRoutes();
-        this._ensureUploadDir();
     }
 
     /**
@@ -240,8 +253,6 @@ class BusinessServer {
         // 健康检查路由
         this._netServer.get('/health', (req, res) => this._health(req, res));
         
-        // 兼容旧路由
-        this._registerCompatibilityRoutes();
     }
     
     /**
@@ -260,20 +271,6 @@ class BusinessServer {
         }
     }
     
-    /**
-     * 注册兼容性路由
-     */
-    _registerCompatibilityRoutes() {
-        // 为了向后兼容，保留部分旧路由
-        this._netServer.get('/uploads/:filename', (req, res) => this._static(req, res));
-        this._netServer.post('/upload', (req, res) => this._upload(req, res));
-        this._netServer.delete('/files/:filename', (req, res) => this._delete(req, res));
-        this._netServer.post('/delete', (req, res) => this._deleteBatch(req, res));
-        this._netServer.get('/files', (req, res) => this._list(req, res));
-        this._netServer.get('/config', (req, res) => this._ImageAIConfig(req, res));
-        this._netServer.post('/config', (req, res) => this._ImageAIConfig(req, res));
-        this._netServer.post('/image-ai/cleanup', (req, res) => this._manualCleanup(req, res));
-    }
 
     /**
      * 健康检查
@@ -300,11 +297,11 @@ class BusinessServer {
             return this._error(res, 400, '无效的请求参数，缺少文件数据');
         }
         
-        // 获取模型和prompt参数
+        // 直接使用客户端提交的完整模型参数
         const modelConfig = {
             model: req.body.model || 'wanx2.1-imageedit',
             prompt: req.body.prompt || this._imageAIPrompt,
-            parameters: req.body.parameters || { "n": 1 }
+            parameters: req.body.parameters || {}
         };
 
         const files = req.body.files;
@@ -328,9 +325,9 @@ class BusinessServer {
                     const userUploadDir = path.join(this.options.uploadDir, effectiveUserId);
                     const filePath = path.join(userUploadDir, result.savedAs);
                     // 使用用户特定的URL
-                    const localUrl = `${this.options.uploadDir}/${effectiveUserId}/${result.savedAs}`;
-                    console.log(`立即处理单张图片: ${result.savedAs}`);
-                    this._processSingleImage(filePath, localUrl, result.savedAs, modelConfig);
+                    //const localUrl = `${this.options.uploadDir}/${effectiveUserId}/${result.savedAs}`;
+                    console.log(`处理单张图片信息: ${JSON.stringify(result)}`);
+                    this._processSingleImage(result.externalUrl, result.savedAs, modelConfig, filePath);
                 }
                 
                 checkComplete();
@@ -350,21 +347,12 @@ class BusinessServer {
 /**
  * 处理单张图片
  */
-_processSingleImage(filePath, externalUrl, filename, modelConfig) {
-    // 使用传入的模型配置，如果没有则使用默认配置
-    const prompt = modelConfig.prompt || this._imageAIPrompt;
-    const model = modelConfig.model || 'wanx2.1-imageedit';
-    const parameters = modelConfig.parameters || { "n": 1 };
+_processSingleImage(externalUrl, filename, modelConfig, filePath) {
     
-    if (!prompt) {
+    if (!modelConfig.prompt) {
         console.log('未设置处理提示词，跳过图片处理');
         return;
     }
-    
-    const editParams = {
-        prompt: prompt,
-        parameters: parameters
-    };
 
     // 检查是否已存在处理结果
     if (this._imageAI.results[filename]) {
@@ -372,11 +360,11 @@ _processSingleImage(filePath, externalUrl, filename, modelConfig) {
         return;
     }
     
-    console.log(`开始处理图片: ${filename}, 使用外部URL: ${this.options.externalUrl}`);
+    console.log(`开始处理图片: ${filename}, 使用外部URL: ${externalUrl}`);
     console.log(`使用模型: ${model}, 提示词: ${prompt}`);
     
     // 使用外部URL而不是本地文件路径
-    this._imageAI.process([this.options.externalUrl + filename], editParams, (error, results) => {
+    this._imageAI.process([externalUrl], modelConfig, (error, results) => {
         if (error) {
             console.error(`图片处理失败 ${filename}:`, error);
             // 逻辑错误（如文件不存在、API错误等），不删除图片
@@ -401,15 +389,17 @@ _processSingleImage(filePath, externalUrl, filename, modelConfig) {
             };
             console.log(`已保存处理结果 for ${filename}, 创建时间: ${now}`);
             
-            // 只有在任务成功提交并获得结果后才删除本地文件
-            // 这样可以避免重复提交任务
-            file.del(filePath, (deleteErr) => {
-                if (deleteErr) {
-                    console.error(`删除文件失败 ${filePath}:`, deleteErr);
-                } else {
-                    console.log(`已删除处理过的文件: ${filePath}`);
-                }
-            });
+            // 只有当filePath存在且不是远程URL时才删除文件
+            if (filePath && !externalUrl.startsWith('http')) {
+                file.del(filePath, (deleteErr) => {
+                    if (deleteErr) {
+                        console.error(`删除文件失败 ${filePath}:`, deleteErr);
+                    } else {
+                        console.log(`已删除处理过的文件: ${filePath}`);
+                    }
+                });
+            }
+            // 如果需要删除本地文件，应该在_upload方法中处理
         } else {
             console.log(`图片处理无结果，不删除文件: ${filename}`);
         }
@@ -420,12 +410,18 @@ _processSingleImage(filePath, externalUrl, filename, modelConfig) {
      * 处理单个文件
      */
     _processFile(fileData, userId, callback) {
-        if (!fileData.filename || !fileData.content) {
+        // 允许空文件内容，但文件名必须存在
+        if (!fileData.filename) {
             return callback({
                 filename: fileData.filename || '未知',
                 success: false,
                 message: '无效的文件数据'
             });
+        }
+        
+        // 如果文件内容为空，设置为空字符串而不是返回错误
+        if (!fileData.content) {
+            fileData.content = '';
         }
 
         const contentBuffer = Buffer.from(fileData.content, 'base64');
@@ -598,6 +594,26 @@ _processSingleImage(filePath, externalUrl, filename, modelConfig) {
         });
     }
 
+
+    /**
+     * 静态文件服务
+     */
+    _static(req, res) {
+        const filename = req.params.filename;
+        // 获取用户ID
+        const userId = req.headers['x-user-id'] || 'anonymous';
+        
+        // 构建用户特定的文件路径
+        const userUploadDir = path.join(this.options.uploadDir, userId);
+        const userFilePath = path.join(userUploadDir, filename);
+        
+        this._fileService.serveStaticFile(req, res, userFilePath, (err) => {
+            if (err) {
+                this._error(res, 404, err.message);
+            }
+        });
+    }
+
     /**
      * 删除单个文件
      */
@@ -641,25 +657,6 @@ _processSingleImage(filePath, externalUrl, filename, modelConfig) {
                     message: delErr ? `删除失败: ${delErr.message}` : '删除成功'
                 });
             });
-        });
-    }
-
-    /**
-     * 静态文件服务
-     */
-    _static(req, res) {
-        const filename = req.params.filename;
-        // 获取用户ID
-        const userId = req.headers['x-user-id'] || 'anonymous';
-        
-        // 构建用户特定的文件路径
-        const userUploadDir = path.join(this.options.uploadDir, userId);
-        const userFilePath = path.join(userUploadDir, filename);
-        
-        this._fileService.serveStaticFile(req, res, userFilePath, (err) => {
-            if (err) {
-                this._error(res, 404, err.message);
-            }
         });
     }
 
@@ -1077,7 +1074,14 @@ _processSingleImage(filePath, externalUrl, filename, modelConfig) {
         // 清理定时任务
         if (this._cleanupInterval) {
             clearInterval(this._cleanupInterval);
+            this._cleanupInterval = null;
             console.log('已停止定时清理任务');
+        }
+        
+        // 如果服务器已经停止，直接回调
+        if (!this._netServer.server) {
+            console.log('业务服务器已成功关闭');
+            return callback && callback();
         }
         
         this._netServer.stop((err) => {
@@ -1086,7 +1090,11 @@ _processSingleImage(filePath, externalUrl, filename, modelConfig) {
                 return callback && callback(err);
             }
             console.log('业务服务器已成功关闭');
-            callback && callback();
+            if (callback) {
+                setTimeout(() => {
+                    callback();
+                }, 100); // 延迟一点时间确保日志输出完成
+            }
         });
     }
 }
@@ -1096,25 +1104,37 @@ module.exports = BusinessServer;
 // 文件直接运行时启动服务器
 if (require.main === module) {
     const server = new BusinessServer();
-
+    
     server.start((err) => {
         if (err) {
             console.error('服务器启动失败:', err);
             process.exit(1);
         }
     });
-
+    
+    // 标记是否正在关闭服务器
+    let isShuttingDown = false;
+    
     const shutdown = () => {
+        // 防止重复触发关闭
+        if (isShuttingDown) {
+            console.log('服务器已在关闭过程中...');
+            return;
+        }
+        
+        isShuttingDown = true;
         console.log('正在关闭业务服务器...');
+        
         server.stop((err) => {
             if (err) {
                 console.error('关闭服务器时发生错误:', err);
                 process.exit(1);
             }
+            console.log('服务器已完全停止');
             process.exit(0);
         });
     };
-
+    
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
 }
