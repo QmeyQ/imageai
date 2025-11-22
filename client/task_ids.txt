@@ -1,0 +1,8 @@
+[
+  {
+    "file": "lemon.png",
+    "task_id": "3db912be-3253-4a72-97fb-d526397e0f26",
+    "status": "SUCCEEDED",
+    "timestamp": "2025-11-08T15:26:21.571Z"
+  }
+]

@@ -1,0 +1,147 @@
+{
+  "_meta": {
+    "version": "1.0.1",
+    "lastUpdated": "2025-11-22"
+  },
+  "wanx2.1-imageedit": {
+    "id": "wanx2.1-imageedit",
+    "name": "万相图像编辑",
+    "description": "专业图像编辑模型，支持多种图像处理任务",
+    "supportedOperations": [
+      "description_edit",
+      "object_replace",
+      "background_change",
+      "style_transfer"
+    ],
+    "cost": 1,
+    "maxConcurrent": 5,
+    "paramsSchema": {
+      "negative_prompt": {"type": "string"},
+      "style": {"type": "string", "enum": ["默认", "万相老模型", "万相大模型"]},
+      "size": {"type": "string", "enum": ["1024*1024", "720*1280", "1280*720"]},
+      "n": {"type": "number", "min": 1, "max": 4, "default": 1},
+      "strength": {"type": "number", "min": 0, "max": 1, "default": 0.8},
+      "seed": {"type": "number", "default": 0},
+      "ref_img": {"type": "string"},
+      "ref_img_weight": {"type": "number", "min": 0, "max": 1, "default": 0.5}
+    }
+  },
+  "wanx-v1": {
+    "id": "wanx-v1",
+    "name": "万相文生图",
+    "description": "专业文生图模型，支持多种风格生成",
+    "supportedOperations": [
+      "text_to_image",
+      "image_variation"
+    ],
+    "cost": 2,
+    "maxConcurrent": 3,
+    "paramsSchema": {
+      "negative_prompt": {"type": "string"},
+      "style": {"type": "string", "enum": ["默认", "万相老模型", "万相大模型"]},
+      "size": {"type": "string", "enum": ["1024*1024", "720*1280", "1280*720"]},
+      "n": {"type": "number", "min": 1, "max": 4, "default": 1},
+      "seed": {"type": "number", "default": 0}
+    }
+  },
+  "qwen-vl-plus": {
+    "id": "qwen-vl-plus",
+    "name": "通义千问VL Plus",
+    "description": "通用视觉语言模型，支持多种图像理解和编辑任务",
+    "supportedOperations": [
+      "description_edit",
+      "object_replace",
+      "background_change"
+    ],
+    "cost": 1,
+    "maxConcurrent": 5,
+    "paramsSchema": {
+      "negative_prompt": {"type": "string"},
+      "style": {"type": "string", "enum": ["默认", "万相老模型", "万相大模型"]},
+      "size": {"type": "string", "enum": ["1024*1024", "720*1280", "1280*720"]},
+      "n": {"type": "number", "min": 1, "max": 4, "default": 1},
+      "strength": {"type": "number", "min": 0, "max": 1, "default": 0.8},
+      "seed": {"type": "number", "default": 0}
+    }
+  },
+  "qwen-vl-max": {
+    "id": "qwen-vl-max",
+    "name": "通义千问VL Max",
+    "description": "高级视觉语言模型，更强的图像理解和生成能力",
+    "supportedOperations": [
+      "description_edit",
+      "object_replace",
+      "background_change",
+      "style_transfer",
+      "image_inpainting"
+    ],
+    "cost": 3,
+    "maxConcurrent": 2,
+    "paramsSchema": {
+      "negative_prompt": {"type": "string"},
+      "style": {"type": "string", "enum": ["默认", "万相老模型", "万相大模型"]},
+      "size": {"type": "string", "enum": ["1024*1024", "720*1280", "1280*720"]},
+      "n": {"type": "number", "min": 1, "max": 4, "default": 1},
+      "strength": {"type": "number", "min": 0, "max": 1, "default": 0.7},
+      "seed": {"type": "number", "default": 0}
+    }
+  },
+  "stable-diffusion-3.5-large": {
+    "id": "stable-diffusion-3.5-large",
+    "name": "stable-diffusion-3.5-large",
+    "description": "阿里云Stable Diffusion 3.5模型，支持高质量图像生成和编辑",
+    "supportedOperations": [
+      "text_to_image",
+      "image_to_image",
+      "image_inpainting",
+      "image_outpainting",
+      "controlnet"
+    ],
+    "cost": 2,
+    "maxConcurrent": 3,
+    "paramsSchema": {
+      "size": {"type": "string", "enum": ["1024*1024", "720*1280", "1280*720"]},
+      "n": {"type": "number", "min": 1, "max": 4, "default": 1},
+      "steps": {"type": "number", "min": 1, "max": 100, "default": 30}
+    }
+  },
+  "stable-diffusion-3.5-turbo": {
+    "id": "stable-diffusion-3.5-large-turbo",
+    "name": "stable-diffusion-3.5-large-turbo",
+    "description": "对抗性扩散蒸馏（ADD）技术的模型，具备更快的速度。",
+    "supportedOperations": [
+      "text_to_image",
+      "image_to_image",
+      "image_inpainting",
+      "image_outpainting",
+      "controlnet"
+    ],
+    "cost": 2,
+    "maxConcurrent": 3,
+    "paramsSchema": {
+      "size": {"type": "string", "enum": ["1024*1024", "720*1280", "1280*720"]},
+      "n": {"type": "number", "min": 1, "max": 4, "default": 1},
+      "steps": {"type": "number", "min": 1, "max": 100, "default": 30}
+    }
+  },
+  "wan2.5-i2i-preview": {
+    "id": "wan2.5-i2i-preview",
+    "name": "万相2.5 Preview",
+    "description": "万相2.5 preview版本，支持单图编辑、多参考图生图，输出PNG格式图像",
+    "supportedOperations": [
+      "image_edit",
+      "multi_reference_generation"
+    ],
+    "cost": 2,
+    "maxConcurrent": 3,
+    "paramsSchema": {
+      "prompt": {"type": "string", "required": true, "maxLength": 2000, "description": "正向提示词，描述期望的图像元素和视觉特点"},
+      "images": {"type": "array", "required": true, "maxItems": 3, "description": "图像URL数组，最多3张图片", "autoFill": true},
+      "negative_prompt": {"type": "string", "maxLength": 500, "default": "", "description": "反向提示词，描述不希望出现的内容"},
+      "size": {"type": "string", "enum": ["1280*1280", "1024*1024", "768*768", "1280*720", "720*1280"], "default": "1280*1280", "description": "输出图像分辨率"},
+      "n": {"type": "number", "min": 1, "max": 4, "default": 1, "description": "生成图片数量"},
+      "watermark": {"type": "boolean", "default": false, "description": "是否添加'AI生成'水印"},
+      "seed": {"type": "number", "min": 0, "max": 2147483647, "description": "随机数种子（可选）"}
+    }
+  }
+}

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<!-- 
+图片资源管理器主页面
+
+该页面是图片处理应用的用户界面，提供本地图片管理、服务器图片浏览、
+AI模型选择和图片处理等功能。采用响应式设计，支持拖放操作和文件上传。
+
+主要功能区域：
+- 认证区域：用户登录/注册
+- AI配置区域：模型选择、操作类型选择、提示词输入
+- 本地图片区域：本地图片浏览、上传操作
+- 服务器图片区域：服务器图片浏览、管理操作
+
+引用的JS模块：
+- IDBStorage.js: IndexedDB存储模块
+- net.js: 网络请求模块
+- client.js: 客户端主模块
+- ui.js: UI工具模块
+- imgUtil.js: 图像工具模块
+- state.js: 状态管理模块
+- adapters/ds.js: DashScope适配器
+- services/*.js: 各种服务模块
+- index.js: 主应用逻辑
+-->
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片资源管理器</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>图片资源管理器</h1>
+            <p>拖入文件夹或图片文件到下方区域，或浏览服务器图片</p>
+            <!-- 登录/注册区域 -->
+            <div class="auth-section">
+                <div id="authNotLoggedIn">
+                    <input type="text" id="usernameInput" placeholder="用户名">
+                    <input type="password" id="passwordInput" placeholder="密码">
+                    <button id="loginBtn">登录</button>
+                    <button id="registerBtn">注册</button>
+                </div>
+                <div id="authLoggedIn" style="display: none;">
+                    <span>欢迎, <span id="currentUser"></span></span>
+                    <button id="logoutBtn">退出</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Prompt设置区域 -->
+        <div class="prompt-section">
+            <h2>AI生成配置</h2>
+            <div class="config-row">
+                <!-- 模型选择下拉框 -->
+                <div class="model-selector-container">
+                    <label for="modelSelector">选择AI模型:</label>
+                    <select id="modelSelector" class="model-selector">
+                        <option value="">加载中...</option>
+                    </select>
+                </div>
+                
+                <!-- 操作选择下拉框 -->
+                <div class="operation-selector-container">
+                    <label for="operationSelector">选择操作:</label>
+                    <select id="operationSelector" class="operation-selector">
+                        <option value="">请先选择模型</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="prompt-input-container">
+                <textarea id="promptInput" class="prompt-input" placeholder="请输入或选择AI生成提示词..."></textarea>
+                <div id="promptDropdown" class="prompt-dropdown">
+                    <div class="prompt-option">将图片产品渲染成白色场景的keyshot渲染效果图，产品在原视角偏转25度</div>
+                    <div class="prompt-option">渲染图中的主体产品，白色场景，爆炸图形式，展示内部结构，去掉logo，文字等</div>
+                    <div class="prompt-option">将图片产品渲染成白色场景的keyshot渲染效果图，产品在原视角偏转25度，去掉logo，文字等具有辨识度的标识</div>
+                </div>
+            </div>
+            
+            <!-- 模型参数配置区域 -->
+            <div class="model-params-section" id="modelParamsSection" style="display: none;">
+                <h3>模型参数配置</h3>
+                <div class="params-grid" id="modelParamsGrid">
+                    <!-- 参数配置项将通过JavaScript动态生成 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 本地图片区域（包含拖放功能） -->
+        <div class="drop-area" id="dropArea">
+            <h2>本地图片</h2>
+            <div>
+                <div class="drop-content">
+                    <h3>将文件或文件夹拖放到此处</h3>
+                    <p>支持JPG、PNG、GIF等图片格式</p>
+                    <div class="controls">
+                        <button class="control-btn secondary" id="loadLocalBtn">选择文件</button>
+                        <button class="control-btn" id="uploadBtn">上传所有图片</button>
+                        <button class="control-btn danger" id="clearLocalBtn">清空本地图片</button>
+                    </div>
+                    <input type="file" id="fileInput" multiple directory webkitdirectory mozdirectory
+                        style="display: none;">
+                </div>
+            </div>
+            <div class="image-grid" id="localImages"></div>
+        </div>
+
+        <!-- 服务器图片区域 -->
+        <div class="section">
+            <h2>服务器图片</h2>
+            <div class="controls">
+            <button class="control-btn" id="loadServerBtn">加载服务器图片</button>
+            <button class="control-btn" id="hideSelectedBtn">隐藏选中</button>
+            <button class="control-btn" id="showAllBtn">显示所有处理过的图片</button>
+            <button class="control-btn danger" id="deleteSelectedBtn">删除选中</button>
+            <button class="control-btn danger" id="clearServerBtn">清空服务器图片</button>
+        </div>
+            <div class="progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressBar"></div>
+                    <div class="progress-text" id="progressText">0%</div>
+                </div>
+            </div>
+            <div class="image-grid" id="serverImages"></div>
+        </div>
+    </div>
+    <script src="IDBStorage.js"></script>
+    <script src="net.js"></script>
+    <script src="client.js"></script>
+    <script src="ui.js"></script>
+    <script src="imgUtil.js"></script>
+    <script src="state.js"></script>
+    
+    <!-- 新增的服务模块 -->
+    <script src="adapters/ds.js"></script>
+    <script src="services/auth.js"></script>
+    <script src="services/quota.js"></script>
+    <script src="services/imageAI.js"></script>
+    <script src="services/task.js"></script>
+    <script src="services/events.js"></script>
+    <script src="services/file.js"></script>
+    <script src="services/index.js"></script>
+    <script src="services/example.js"></script>
+    <script src="services/modelExample.js"></script>
+    <script src="services/modelSelectorExample.js"></script>
+    
+    <script src="index.js"></script>
+</body>
+
+</html>
